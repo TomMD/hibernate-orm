@@ -20,6 +20,7 @@ import java.util.function.Consumer;
 import org.hibernate.HibernateException;
 import org.hibernate.Interceptor;
 import org.hibernate.Session;
+import org.hibernate.StatelessSession;
 import org.hibernate.boot.Metadata;
 import org.hibernate.boot.MetadataBuilder;
 import org.hibernate.boot.MetadataSources;
@@ -553,6 +554,10 @@ public class BaseNonConfigCoreFunctionalTestCase extends BaseUnitTestCase {
 	public void inSession(Consumer<SessionImplementor> action) {
 		log.trace( "#inSession(action)" );
 		TransactionUtil2.inSession( sessionFactory(), action );
+	}
+
+	public void inStatelessSession(Consumer<StatelessSession> action) {
+		TransactionUtil2.inStatelessSession( sessionFactory(), action );
 	}
 
 	public void inTransaction(Consumer<SessionImplementor> action) {

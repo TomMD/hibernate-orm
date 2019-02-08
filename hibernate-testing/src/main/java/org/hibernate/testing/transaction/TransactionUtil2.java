@@ -8,6 +8,7 @@ package org.hibernate.testing.transaction;
 
 import java.util.function.Consumer;
 
+import org.hibernate.StatelessSession;
 import org.hibernate.Transaction;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.engine.spi.SessionImplementor;
@@ -34,6 +35,18 @@ public class TransactionUtil2 {
 		}
 	}
 
+	public static void inStatelessSession(SessionFactoryImplementor sfi, Consumer<StatelessSession> action) {
+		log.trace( "#inStatelessSession(SF,action)" );
+
+		try (StatelessSession session = sfi.openStatelessSession()) {
+			log.trace( "StatelessSession opened, calling action" );
+			action.accept( session );
+			log.trace( "called action" );
+		}
+		finally {
+			log.trace( "StatelessSession closed (AutoCloseable)" );
+		}
+	}
 
 	public static void inTransaction(SessionFactoryImplementor factory, Consumer<SessionImplementor> action) {
 		log.trace( "#inTransaction(factory, action)");
