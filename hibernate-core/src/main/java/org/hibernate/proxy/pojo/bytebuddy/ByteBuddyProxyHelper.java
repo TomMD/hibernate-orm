@@ -10,6 +10,7 @@ import static org.hibernate.internal.CoreLogging.messageLogger;
 
 import java.io.Serializable;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -18,6 +19,7 @@ import java.util.Set;
 
 import org.hibernate.HibernateException;
 import org.hibernate.bytecode.internal.bytebuddy.ByteBuddyState;
+import org.hibernate.bytecode.internal.javassist.BulkAccessorException;
 import org.hibernate.cfg.Environment;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.internal.util.ReflectHelper;
