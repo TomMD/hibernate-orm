@@ -20,7 +20,6 @@ import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
-import org.hibernate.EntityMode;
 import org.hibernate.Hibernate;
 import org.hibernate.HibernateException;
 import org.hibernate.MappingException;
@@ -46,7 +45,6 @@ import org.hibernate.persister.entity.Joinable;
 import org.hibernate.pretty.MessageHelper;
 import org.hibernate.proxy.HibernateProxy;
 import org.hibernate.proxy.LazyInitializer;
-import org.hibernate.type.spi.TypeConfiguration;
 
 import org.jboss.logging.Logger;
 
@@ -769,21 +767,22 @@ public abstract class CollectionType extends AbstractType implements Association
 	 */
 	public Object getCollection(Serializable key, SharedSessionContractImplementor session, Object owner, Boolean overridingEager) {
 
-		CollectionPersister persister = getPersister( session );
+		final CollectionPersister persister = getPersister( session );
 		final PersistenceContext persistenceContext = session.getPersistenceContext();
-		final EntityMode entityMode = persister.getOwnerEntityPersister().getEntityMode();
 
+		final CollectionKey collectionKey = new CollectionKey( persister, key );
 		// check if collection is currently being loaded
-		PersistentCollection collection = persistenceContext.getLoadContexts().locateLoadingCollection( persister, key );
+		PersistentCollection collection = persistenceContext.getLoadContexts()
+				.locateLoadingCollection( persister, collectionKey );
 
 		if ( collection == null ) {
 
 			// check if it is already completely loaded, but unowned
-			collection = persistenceContext.useUnownedCollection( new CollectionKey(persister, key, entityMode) );
+			collection = persistenceContext.useUnownedCollection( collectionKey );
 
 			if ( collection == null ) {
 
-				collection = persistenceContext.getCollection( new CollectionKey(persister, key, entityMode) );
+				collection = persistenceContext.getCollection( collectionKey );
 
 				if ( collection == null ) {
 					// create a new collection wrapper, to be initialized later
@@ -803,21 +802,21 @@ public abstract class CollectionType extends AbstractType implements Association
 					}
 
 					if ( hasHolder() ) {
-						session.getPersistenceContext().addCollectionHolder( collection );
+						persistenceContext.addCollectionHolder( collection );
 					}
+
+					if ( LOG.isTraceEnabled() ) {
+						LOG.tracef( "Created collection wrapper: %s",
+									MessageHelper.collectionInfoString( persister, collection,
+																		key, session ) );
+					}
+					// we have already set the owner so we can just return the value
+					return collection.getValue();
 				}
-
 			}
-
-			if ( LOG.isTraceEnabled() ) {
-				LOG.tracef( "Created collection wrapper: %s",
-						MessageHelper.collectionInfoString( persister, collection,
-								key, session ) );
-			}
-
 		}
 
-		collection.setOwner(owner);
+		collection.setOwner( owner );
 
 		return collection.getValue();
 	}
