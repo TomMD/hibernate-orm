@@ -56,13 +56,21 @@ public class LocalDateTimeJavaDescriptor extends AbstractTypeDescriptor<LocalDat
 
 		if ( java.sql.Timestamp.class.isAssignableFrom( type ) ) {
 			/*
-			 * Workaround for HHH-13266 (JDK-8061577).
-			 * We used to do Timestamp.from( value.atZone( ZoneId.systemDefault() ).toInstant() ),
-			 * but on top of being more complex than the line below, it won't always work.
-			 * Timestamp.from() assumes the number of milliseconds since the epoch
-			 * means the same thing in Timestamp and Instant, but it doesn't, in particular before 1900.
+			 * This works around two bugs:
+			 * - HHH-13266 (JDK-8061577): around and before 1900,
+			 * the number of milliseconds since the epoch does not mean the same thing
+			 * for java.util and java.time, so conversion must be done using the year, month, day, hour, etc.
+			 * - HHH-13379 (JDK-4312621): after 1908 (approximately),
+			 * Daylight Saving Time introduces ambiguity in the year/month/day/hour/etc representation once a year
+			 * (on DST end), so conversion must be done using the number of milliseconds since the epoch.
+			 * - around 1905, both methods are equally valid, so we don't really care which one is used.
 			 */
-			return (X) Timestamp.valueOf( value );
+			if ( value.getYear() < 1905 ) {
+				return (X) Timestamp.valueOf( value );
+			}
+			else {
+				return (X) Timestamp.from( value.atZone( ZoneId.systemDefault() ).toInstant() );
+			}
 		}
 
 		if ( java.sql.Date.class.isAssignableFrom( type ) ) {
@@ -105,13 +113,21 @@ public class LocalDateTimeJavaDescriptor extends AbstractTypeDescriptor<LocalDat
 		if ( Timestamp.class.isInstance( value ) ) {
 			final Timestamp ts = (Timestamp) value;
 			/*
-			 * Workaround for HHH-13266 (JDK-8061577).
-			 * We used to do LocalDateTime.ofInstant( ts.toInstant(), ZoneId.systemDefault() ),
-			 * but on top of being more complex than the line below, it won't always work.
-			 * ts.toInstant() assumes the number of milliseconds since the epoch
-			 * means the same thing in Timestamp and Instant, but it doesn't, in particular before 1900.
+			 * This works around two bugs:
+			 * - HHH-13266 (JDK-8061577): around and before 1900,
+			 * the number of milliseconds since the epoch does not mean the same thing
+			 * for java.util and java.time, so conversion must be done using the year, month, day, hour, etc.
+			 * - HHH-13379 (JDK-4312621): after 1908 (approximately),
+			 * Daylight Saving Time introduces ambiguity in the year/month/day/hour/etc representation once a year
+			 * (on DST end), so conversion must be done using the number of milliseconds since the epoch.
+			 * - around 1905, both methods are equally valid, so we don't really care which one is used.
 			 */
-			return ts.toLocalDateTime();
+			if ( ts.getYear() < 5 ) { // Timestamp year 0 is 1900
+				return ts.toLocalDateTime();
+			}
+			else {
+				return LocalDateTime.ofInstant( ts.toInstant(), ZoneId.systemDefault() );
+			}
 		}
 
 		if ( Long.class.isInstance( value ) ) {
