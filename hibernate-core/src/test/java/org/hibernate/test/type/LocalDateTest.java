@@ -65,6 +65,14 @@ public class LocalDateTest extends AbstractJavaTimeTypeTest<LocalDate, LocalDate
 								.add( 1900, 1, 1, ZONE_AMSTERDAM )
 								.add( 1600, 1, 1, ZONE_AMSTERDAM )
 				)
+				// HHH-13379: DST end (where Timestamp becomes ambiguous, see JDK-4312621)
+				// => Test the day of DST end, just in case
+				.add( 2018, 10, 28, ZONE_PARIS )
+				// => Also test the day of DST start, just in case
+				.add( 2018, 3, 25, ZONE_PARIS )
+				// => Also test dates around 1905-01-01, because the code behaves differently before and after 1905
+				.add( 1904, 12, 31, ZONE_PARIS )
+				.add( 1905, 1, 1, ZONE_PARIS )
 				.build();
 	}
 

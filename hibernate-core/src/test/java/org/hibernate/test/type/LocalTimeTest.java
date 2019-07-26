@@ -82,6 +82,10 @@ public class LocalTimeTest extends AbstractJavaTimeTypeTest<LocalTime, LocalTime
 								.addPersistedWithoutHibernate( 1900, 1, 1, 0, 19, 31, 0, ZONE_AMSTERDAM )
 								.addPersistedWithoutHibernate( 1600, 1, 1, 0, 0, 0, 0, ZONE_AMSTERDAM )
 				)
+				// HHH-13379: DST end (where Timestamp becomes ambiguous, see JDK-4312621)
+				.add( 1, 0, 0, 0, ZONE_PARIS )
+				.add( 2, 0, 0, 0, ZONE_PARIS )
+				.add( 3, 0, 0, 0, ZONE_PARIS )
 				.build();
 	}
 
