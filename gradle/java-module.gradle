@@ -10,7 +10,7 @@ buildscript {
 		mavenCentral()
 	}
 	dependencies {
-		classpath 'de.thetaphi:forbiddenapis:2.5'
+		classpath 'de.thetaphi:forbiddenapis:2.6'
 	}
 }
 
@@ -35,7 +35,7 @@ apply plugin: 'project-report'
 ext {
 	java9ModuleNameBase = project.name.startsWith( 'hibernate-' ) ? name.drop( 'hibernate-'.length() ): name
 	java9ModuleName = "org.hibernate.orm.$project.java9ModuleNameBase"
-	forbiddenAPITargetJDKCompatibility = '10'
+	forbiddenAPITargetJDKCompatibility = '11'
 }
 
 
@@ -107,32 +107,6 @@ dependencies {
 	else if ( db.equalsIgnoreCase( 'hana' ) ) {
 		testRuntime( libraries.hana )
 	}
-
-
-	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	// Java 9 ftw!
-	if ( JavaVersion.current().isJava9Compatible() ) {
-		// The JDK used to run Gradle is Java 9+, and we assume that that is the same
-		//		JDK for executing tasks
-		compile( 'com.sun.xml.bind:jaxb-impl:2.2.11' )
-		compile( 'org.glassfish.jaxb:jaxb-xjc:2.2.11' )
-		compile( 'org.jvnet.jaxb2_commons:jaxb2-basics:0.11.0' )
-		compile( 'org.jvnet.jaxb2_commons:jaxb2-basics-ant:0.11.0' )
-		compile( 'javax.annotation:jsr250-api:1.0' )
-
-		testCompile( 'com.sun.xml.bind:jaxb-impl:2.2.11' )
-		testCompile( 'org.glassfish.jaxb:jaxb-xjc:2.2.11' )
-		testCompile( 'org.jvnet.jaxb2_commons:jaxb2-basics:0.11.0' )
-		testCompile( 'org.jvnet.jaxb2_commons:jaxb2-basics-ant:0.11.0' )
-		testCompile( 'javax.annotation:jsr250-api:1.0' )
-
-		testRuntime( 'com.sun.xml.bind:jaxb-impl:2.2.11' )
-		testRuntime( 'org.glassfish.jaxb:jaxb-xjc:2.2.11' )
-		testRuntime( 'org.jvnet.jaxb2_commons:jaxb2-basics:0.11.0' )
-		testRuntime( 'org.jvnet.jaxb2_commons:jaxb2-basics-ant:0.11.0' )
-	}
-	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 
 	// Mac-specific
 	project.ext.toolsJar = file("${System.getProperty('java.home')}/../lib/tools.jar")
@@ -231,13 +205,27 @@ processTestResources {
 	}
 }
 
-// Enable the experimental features of ByteBuddy with JDK 11
+// Enable the experimental features of ByteBuddy with JDK 12+
 test {
+	//Only safe to attempt to parse the version as an integer since JDK11
 	if ( JavaVersion.current().isJava11Compatible() ) {
-		systemProperty 'net.bytebuddy.experimental', true
+		int majorJVMVersionInt = Integer.valueOf(JavaVersion.current().toString());
+		//Set the -Dnet.bytebuddy.experimental=true property only when we need it:
+		if (majorJVMVersionInt >= 12) {
+			systemProperty 'net.bytebuddy.experimental', true
+		}
 	}
 }
 
+test {
+	if ( project.findProperty( 'log-test-progress' )?.toString()?.toBoolean() ) {
+		// Log a statement for each test.
+		// Used in the Travis build so that Travis doesn't end up panicking because there's no output for a long time.
+		testLogging {
+			events "passed", "skipped", "failed"
+		}
+	}
+}
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // IDE
