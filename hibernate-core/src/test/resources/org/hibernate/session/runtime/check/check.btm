@@ -1,0 +1,25 @@
+# Use a flag to mark that the session factory has been created
+RULE mark runtime
+CLASS org.hibernate.cfg.Configuration
+METHOD buildSessionFactory
+AT EXIT
+IF true
+DO flag("runtime")
+ENDRULE
+
+# Remove the flag before wipe the session factory
+RULE un-mark runtime
+CLASS org.hibernate.SessionFactory
+METHOD close
+AT ENTRY
+IF true
+DO clear("runtime")
+ENDRULE
+
+RULE check regex pattern parsing is not used at runtime
+CLASS Pattern
+METHOD compile
+AT ENTRY
+IF flagged("runtime")
+DO THROW new org.hibernate.session.runtime.check.CheckForbiddenAPIException("Regex pattern parsing");
+ENDRULE
