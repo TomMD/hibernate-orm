@@ -6,7 +6,6 @@
  */
 package org.hibernate.dialect;
 
-import org.hibernate.JDBCException;
 import org.hibernate.LockOptions;
 import org.hibernate.QueryTimeoutException;
 import org.hibernate.boot.model.TypeContributions;
@@ -27,8 +26,8 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.hibernate.exception.LockAcquisitionException;
 import org.hibernate.exception.LockTimeoutException;
 import org.hibernate.exception.spi.SQLExceptionConversionDelegate;
-import org.hibernate.exception.spi.TemplatedViolatedConstraintNameExtracter;
-import org.hibernate.exception.spi.ViolatedConstraintNameExtracter;
+import org.hibernate.exception.spi.TemplatedViolatedConstraintNameExtractor;
+import org.hibernate.exception.spi.ViolatedConstraintNameExtractor;
 import org.hibernate.internal.util.JdbcExceptionHelper;
 import org.hibernate.internal.util.StringHelper;
 import org.hibernate.procedure.internal.StandardCallableStatementSupport;
@@ -55,6 +54,7 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static org.hibernate.exception.spi.TemplatedViolatedConstraintNameExtractor.extractUsingTemplate;
 import static org.hibernate.query.CastType.STRING;
 import static org.hibernate.query.TemporalUnit.*;
 
@@ -704,82 +704,67 @@ public class OracleDialect extends Dialect {
 	}
 
 	@Override
-	public ViolatedConstraintNameExtracter getViolatedConstraintNameExtracter() {
-		return EXTRACTER;
+	public ViolatedConstraintNameExtractor getViolatedConstraintNameExtractor() {
+		return EXTRACTOR;
 	}
 
-	private static final ViolatedConstraintNameExtracter EXTRACTER = new TemplatedViolatedConstraintNameExtracter() {
-
-		/**
-		 * Extract the name of the violated constraint from the given SQLException.
-		 *
-		 * @param sqle The exception that was the result of the constraint violation.
-		 * @return The extracted constraint name.
-		 */
-		@Override
-		protected String doExtractConstraintName(SQLException sqle) throws NumberFormatException {
-			final int errorCode = JdbcExceptionHelper.extractErrorCode( sqle );
-			switch ( errorCode ) {
-				case 1:
-				case 2291:
-				case 2292:
-					return extractUsingTemplate("(", ")", sqle.getMessage());
-				case 1400:
-					// simple nullability constraint
-					return null;
-				default:
-					return null;
-			}
-		}
-
-	};
-
-	@Override
-	public SQLExceptionConversionDelegate buildSQLExceptionConversionDelegate() {
-		return new SQLExceptionConversionDelegate() {
-			@Override
-			public JDBCException convert(SQLException sqlException, String message, String sql) {
-				// interpreting Oracle exceptions is much much more precise based on their specific vendor codes.
-				final int errorCode = JdbcExceptionHelper.extractErrorCode( sqlException );
-				switch ( errorCode ) {
-
-					// lock timeouts ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-					case 30006:
-						// ORA-30006: resource busy; acquire with WAIT timeout expired
-						throw new LockTimeoutException(message, sqlException, sql);
-					case 54:
-						// ORA-00054: resource busy and acquire with NOWAIT specified or timeout expired
-						throw new LockTimeoutException(message, sqlException, sql);
-					case 4021:
-						// ORA-04021 timeout occurred while waiting to lock object
-						throw new LockTimeoutException(message, sqlException, sql);
-
-					// deadlocks ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-					case 60:
-						// ORA-00060: deadlock detected while waiting for resource
-						return new LockAcquisitionException( message, sqlException, sql );
-					case 4020:
-						// ORA-04020 deadlock detected while trying to lock object
-						return new LockAcquisitionException( message, sqlException, sql );
-
-					// query cancelled ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-					case 1013:
-						// ORA-01013: user requested cancel of current operation
-						throw new QueryTimeoutException(  message, sqlException, sql );
-
-					// data integrity violation ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-					case 1407:
-						// ORA-01407: cannot update column to NULL
-						final String constraintName = getViolatedConstraintNameExtracter().extractConstraintName( sqlException );
-						return new ConstraintViolationException( message, sqlException, sql, constraintName );
-
+	private static final ViolatedConstraintNameExtractor EXTRACTOR =
+			new TemplatedViolatedConstraintNameExtractor( sqle -> {
+				switch ( JdbcExceptionHelper.extractErrorCode( sqle ) ) {
+					case 1:
+					case 2291:
+					case 2292:
+						return extractUsingTemplate( "(", ")", sqle.getMessage() );
+					case 1400:
+						// simple nullability constraint
+						return null;
 					default:
 						return null;
 				}
+			} );
+
+	@Override
+	public SQLExceptionConversionDelegate buildSQLExceptionConversionDelegate() {
+		return (sqlException, message, sql) -> {
+			// interpreting Oracle exceptions is much much more precise based on their specific vendor codes.
+			switch ( JdbcExceptionHelper.extractErrorCode( sqlException ) ) {
+
+				// lock timeouts ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+				case 30006:
+					// ORA-30006: resource busy; acquire with WAIT timeout expired
+					throw new LockTimeoutException(message, sqlException, sql);
+				case 54:
+					// ORA-00054: resource busy and acquire with NOWAIT specified or timeout expired
+					throw new LockTimeoutException(message, sqlException, sql);
+				case 4021:
+					// ORA-04021 timeout occurred while waiting to lock object
+					throw new LockTimeoutException(message, sqlException, sql);
+
+				// deadlocks ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+				case 60:
+					// ORA-00060: deadlock detected while waiting for resource
+					return new LockAcquisitionException( message, sqlException, sql );
+				case 4020:
+					// ORA-04020 deadlock detected while trying to lock object
+					return new LockAcquisitionException( message, sqlException, sql );
+
+				// query cancelled ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+				case 1013:
+					// ORA-01013: user requested cancel of current operation
+					throw new QueryTimeoutException(  message, sqlException, sql );
+
+				// data integrity violation ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+				case 1407:
+					// ORA-01407: cannot update column to NULL
+					final String constraintName = getViolatedConstraintNameExtractor().extractConstraintName( sqlException );
+					return new ConstraintViolationException( message, sqlException, sql, constraintName );
+
+				default:
+					return null;
 			}
 		};
 	}

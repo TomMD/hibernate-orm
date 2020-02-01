@@ -6,7 +6,6 @@
  */
 package org.hibernate.dialect;
 
-import org.hibernate.JDBCException;
 import org.hibernate.LockOptions;
 import org.hibernate.NullPrecedence;
 import org.hibernate.PessimisticLockException;
@@ -26,8 +25,8 @@ import org.hibernate.engine.jdbc.dialect.spi.DialectResolutionInfo;
 import org.hibernate.exception.LockAcquisitionException;
 import org.hibernate.exception.LockTimeoutException;
 import org.hibernate.exception.spi.SQLExceptionConversionDelegate;
-import org.hibernate.exception.spi.TemplatedViolatedConstraintNameExtracter;
-import org.hibernate.exception.spi.ViolatedConstraintNameExtracter;
+import org.hibernate.exception.spi.TemplatedViolatedConstraintNameExtractor;
+import org.hibernate.exception.spi.ViolatedConstraintNameExtractor;
 import org.hibernate.internal.util.JdbcExceptionHelper;
 import org.hibernate.metamodel.mapping.EntityMappingType;
 import org.hibernate.metamodel.mapping.SqlExpressable;
@@ -46,6 +45,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 
+import static org.hibernate.exception.spi.TemplatedViolatedConstraintNameExtractor.extractUsingTemplate;
 import static org.hibernate.query.CastType.BOOLEAN;
 
 /**
@@ -381,22 +381,19 @@ public class MySQLDialect extends Dialect {
 		return NoSequenceSupport.INSTANCE;
 	}
 
-	public ViolatedConstraintNameExtracter getViolatedConstraintNameExtracter() {
-		return getVersion() < 500 ? super.getViolatedConstraintNameExtracter() : EXTRACTER;
+	public ViolatedConstraintNameExtractor getViolatedConstraintNameExtractor() {
+		return getVersion() < 500 ? super.getViolatedConstraintNameExtractor() : EXTRACTOR;
 	}
 
-	private static final ViolatedConstraintNameExtracter EXTRACTER = new TemplatedViolatedConstraintNameExtracter() {
-		@Override
-		protected String doExtractConstraintName(SQLException sqle) throws NumberFormatException {
-			final int sqlState = Integer.parseInt( JdbcExceptionHelper.extractSqlState( sqle ) );
-			switch ( sqlState ) {
-				case 23000:
-					return extractUsingTemplate( " for key '", "'", sqle.getMessage() );
-				default:
-					return null;
-			}
-		}
-	};
+	private static final ViolatedConstraintNameExtractor EXTRACTOR =
+			new TemplatedViolatedConstraintNameExtractor( sqle -> {
+				switch ( Integer.parseInt( JdbcExceptionHelper.extractSqlState( sqle ) ) ) {
+					case 23000:
+						return extractUsingTemplate( " for key '", "'", sqle.getMessage() );
+					default:
+						return null;
+				}
+			} );
 
 	@Override
 	public boolean qualifyIndexName() {
@@ -659,29 +656,24 @@ public class MySQLDialect extends Dialect {
 
 	@Override
 	public SQLExceptionConversionDelegate buildSQLExceptionConversionDelegate() {
-		return new SQLExceptionConversionDelegate() {
-			@Override
-			public JDBCException convert(SQLException sqlException, String message, String sql) {
-				switch ( sqlException.getErrorCode() ) {
-					case 1205:
-					case 3572:
-						return new PessimisticLockException( message, sqlException, sql );
-					case 1207:
-					case 1206:
-						return new LockAcquisitionException( message, sqlException, sql );
-				}
-
-				final String sqlState = JdbcExceptionHelper.extractSqlState( sqlException );
-
-				switch (sqlState) {
-					case "41000":
-						return new LockTimeoutException(message, sqlException, sql);
-					case "40001":
-						return new LockAcquisitionException(message, sqlException, sql);
-				}
-
-				return null;
+		return (sqlException, message, sql) -> {
+			switch ( sqlException.getErrorCode() ) {
+				case 1205:
+				case 3572:
+					return new PessimisticLockException( message, sqlException, sql );
+				case 1207:
+				case 1206:
+					return new LockAcquisitionException( message, sqlException, sql );
 			}
+
+			switch ( JdbcExceptionHelper.extractSqlState( sqlException ) ) {
+				case "41000":
+					return new LockTimeoutException(message, sqlException, sql);
+				case "40001":
+					return new LockAcquisitionException(message, sqlException, sql);
+			}
+
+			return null;
 		};
 	}
 

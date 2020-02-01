@@ -6,7 +6,6 @@
  */
 package org.hibernate.dialect;
 
-import org.hibernate.JDBCException;
 import org.hibernate.LockOptions;
 import org.hibernate.dialect.pagination.LimitHandler;
 import org.hibernate.dialect.pagination.TopLimitHandler;
@@ -22,7 +21,6 @@ import org.hibernate.sql.Sybase11JoinFragment;
 import org.hibernate.type.descriptor.sql.SqlTypeDescriptor;
 import org.hibernate.type.descriptor.sql.TinyIntTypeDescriptor;
 
-import java.sql.SQLException;
 import java.sql.Types;
 import java.util.Map;
 
@@ -438,25 +436,22 @@ public class SybaseASEDialect extends SybaseDialect {
 			return null;
 		}
 
-		return new SQLExceptionConversionDelegate() {
-			@Override
-			public JDBCException convert(SQLException sqlException, String message, String sql) {
-				final String sqlState = JdbcExceptionHelper.extractSqlState( sqlException );
-				final int errorCode = JdbcExceptionHelper.extractErrorCode( sqlException );
-				switch ( sqlState ) {
-					case "JZ0TO":
-					case "JZ006":
-						throw new LockTimeoutException( message, sqlException, sql );
-					case "ZZZZZ":
-						if (515 == errorCode) {
-							// Attempt to insert NULL value into column; column does not allow nulls.
-							final String constraintName = getViolatedConstraintNameExtracter().extractConstraintName( sqlException );
-							return new ConstraintViolationException( message, sqlException, sql, constraintName );
-						}
-						break;
-				}
-				return null;
+		return (sqlException, message, sql) -> {
+			final String sqlState = JdbcExceptionHelper.extractSqlState( sqlException );
+			final int errorCode = JdbcExceptionHelper.extractErrorCode( sqlException );
+			switch ( sqlState ) {
+				case "JZ0TO":
+				case "JZ006":
+					throw new LockTimeoutException( message, sqlException, sql );
+				case "ZZZZZ":
+					if (515 == errorCode) {
+						// Attempt to insert NULL value into column; column does not allow nulls.
+						final String constraintName = getViolatedConstraintNameExtractor().extractConstraintName( sqlException );
+						return new ConstraintViolationException( message, sqlException, sql, constraintName );
+					}
+					break;
 			}
+			return null;
 		};
 	}
 

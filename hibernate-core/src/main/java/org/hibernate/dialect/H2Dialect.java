@@ -6,7 +6,6 @@
  */
 package org.hibernate.dialect;
 
-import org.hibernate.JDBCException;
 import org.hibernate.PessimisticLockException;
 import org.hibernate.boot.TempTableDdlTransactionHandling;
 import org.hibernate.cfg.AvailableSettings;
@@ -23,8 +22,8 @@ import org.hibernate.engine.jdbc.dialect.spi.DialectResolutionInfo;
 import org.hibernate.exception.ConstraintViolationException;
 import org.hibernate.exception.LockAcquisitionException;
 import org.hibernate.exception.spi.SQLExceptionConversionDelegate;
-import org.hibernate.exception.spi.TemplatedViolatedConstraintNameExtracter;
-import org.hibernate.exception.spi.ViolatedConstraintNameExtracter;
+import org.hibernate.exception.spi.TemplatedViolatedConstraintNameExtractor;
+import org.hibernate.exception.spi.ViolatedConstraintNameExtractor;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.internal.util.JdbcExceptionHelper;
 import org.hibernate.metamodel.mapping.EntityMappingType;
@@ -38,8 +37,6 @@ import org.hibernate.query.sqm.mutation.spi.SqmMultiTableMutationStrategy;
 import org.hibernate.tool.schema.extract.internal.SequenceInformationExtractorH2DatabaseImpl;
 import org.hibernate.tool.schema.extract.spi.SequenceInformationExtractor;
 import org.jboss.logging.Logger;
-
-import java.sql.SQLException;
 
 import static org.hibernate.query.TemporalUnit.SECOND;
 
@@ -237,60 +234,44 @@ public class H2Dialect extends Dialect {
 	}
 
 	@Override
-	public ViolatedConstraintNameExtracter getViolatedConstraintNameExtracter() {
-		return EXTRACTER;
+	public ViolatedConstraintNameExtractor getViolatedConstraintNameExtractor() {
+		return EXTRACTOR;
 	}
 
-	private static final ViolatedConstraintNameExtracter EXTRACTER = new TemplatedViolatedConstraintNameExtracter() {
-		/**
-		 * Extract the name of the violated constraint from the given SQLException.
-		 *
-		 * @param sqle The exception that was the result of the constraint violation.
-		 * @return The extracted constraint name.
-		 */
-		@Override
-		protected String doExtractConstraintName(SQLException sqle) throws NumberFormatException {
-			String constraintName = null;
-			// 23000: Check constraint violation: {0}
-			// 23001: Unique index or primary key violation: {0}
-			if ( sqle.getSQLState().startsWith( "23" ) ) {
-				final String message = sqle.getMessage();
-				final int idx = message.indexOf( "violation: " );
-				if ( idx > 0 ) {
-					constraintName = message.substring( idx + "violation: ".length() );
+	private static final ViolatedConstraintNameExtractor EXTRACTOR =
+			new TemplatedViolatedConstraintNameExtractor( sqle -> {
+				// 23000: Check constraint violation: {0}
+				// 23001: Unique index or primary key violation: {0}
+				if ( sqle.getSQLState().startsWith( "23" ) ) {
+					final String message = sqle.getMessage();
+					final int idx = message.indexOf( "violation: " );
+					if ( idx > 0 ) {
+						return message.substring( idx + "violation: ".length() );
+					}
 				}
-			}
-			return constraintName;
-		}
-	};
+				return null;
+			} );
 
 	@Override
 	public SQLExceptionConversionDelegate buildSQLExceptionConversionDelegate() {
-		SQLExceptionConversionDelegate delegate = super.buildSQLExceptionConversionDelegate();
-		if (delegate == null) {
-			delegate = new SQLExceptionConversionDelegate() {
-				@Override
-				public JDBCException convert(SQLException sqlException, String message, String sql) {
-					final int errorCode = JdbcExceptionHelper.extractErrorCode( sqlException );
+		return (sqlException, message, sql) -> {
+			final int errorCode = JdbcExceptionHelper.extractErrorCode( sqlException );
 
-					switch (errorCode) {
-						case 40001:
-							// DEADLOCK DETECTED
-							return new LockAcquisitionException(message, sqlException, sql);
-						case 50200:
-							// LOCK NOT AVAILABLE
-							return new PessimisticLockException(message, sqlException, sql);
-						case 90006:
-							// NULL not allowed for column [90006-145]
-							final String constraintName = getViolatedConstraintNameExtracter().extractConstraintName(sqlException);
-							return new ConstraintViolationException(message, sqlException, sql, constraintName);
-					}
+			switch (errorCode) {
+				case 40001:
+					// DEADLOCK DETECTED
+					return new LockAcquisitionException(message, sqlException, sql);
+				case 50200:
+					// LOCK NOT AVAILABLE
+					return new PessimisticLockException(message, sqlException, sql);
+				case 90006:
+					// NULL not allowed for column [90006-145]
+					final String constraintName = getViolatedConstraintNameExtractor().extractConstraintName(sqlException);
+					return new ConstraintViolationException(message, sqlException, sql, constraintName);
+			}
 
-					return null;
-				}
-			};
-		}
-		return delegate;
+			return null;
+		};
 	}
 
 	@Override
